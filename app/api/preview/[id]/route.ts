@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { get } from '@vercel/blob'
+import { list } from '@vercel/blob'
 
 export async function GET(
   request: NextRequest,
@@ -7,9 +7,16 @@ export async function GET(
 ) {
   try {
     const { id } = params
+    const blobPath = `presentations/${id}.html`
     
-    // Get the blob from Vercel Blob Storage
-    const blob = await get(`presentations/${id}.html`)
+    // List blobs to find the one we need
+    // Since @vercel/blob doesn't have a direct get method, we use list
+    const { blobs } = await list({
+      prefix: blobPath,
+    })
+    
+    // Find exact match
+    const blob = blobs.find(b => b.pathname === blobPath)
     
     if (!blob) {
       return NextResponse.json(
@@ -17,9 +24,17 @@ export async function GET(
         { status: 404 }
       )
     }
-
-    // Convert blob to text
-    const html = await blob.text()
+    
+    // Fetch the content from the public blob URL
+    const response = await fetch(blob.url)
+    if (!response.ok) {
+      return NextResponse.json(
+        { error: 'Failed to fetch presentation' },
+        { status: 500 }
+      )
+    }
+    
+    const html = await response.text()
 
     return new NextResponse(html, {
       headers: {

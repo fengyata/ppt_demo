@@ -22,11 +22,12 @@ export async function POST(request: NextRequest) {
       contentType: 'text/html',
     })
     
-    // Return preview URL (use the blob URL directly)
+    // Return preview URL with blob URL
+    // We'll use the blob URL directly for preview
     return NextResponse.json({
       success: true,
       previewUrl: `/preview/${presentationId}`,
-      blobUrl: blob.url, // Store blob URL for direct access if needed
+      blobUrl: blob.url, // Public blob URL
       presentationId,
     })
   } catch (error) {
