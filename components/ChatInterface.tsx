@@ -181,11 +181,16 @@ export function ChatInterface() {
               : null
           )
 
+          // Use blob URL directly if available, otherwise use preview URL
+          const finalPreviewUrl = saveData.blobUrl 
+            ? `/preview/${saveData.presentationId}?url=${encodeURIComponent(saveData.blobUrl)}`
+            : previewUrl
+
           const pptMessage: Message = {
             id: (Date.now() + 3).toString(),
             role: 'assistant',
             content: 'PPT generation completed! Click the button below to preview your presentation in fullscreen.',
-            previewUrl,
+            previewUrl: finalPreviewUrl,
           }
           setMessages((prev) => [...prev, pptMessage])
         } else {

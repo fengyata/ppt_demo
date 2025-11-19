@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { put } from '@vercel/blob'
 
+// Simple in-memory cache to map ID to blob URL
+// In production, consider using Vercel KV for persistence
+const blobUrlCache = new Map<string, string>()
+
 export async function POST(request: NextRequest) {
   try {
     const { html } = await request.json()
@@ -22,12 +26,14 @@ export async function POST(request: NextRequest) {
       contentType: 'text/html',
     })
     
+    // Cache the blob URL for quick lookup
+    blobUrlCache.set(presentationId, blob.url)
+    
     // Return preview URL with blob URL
-    // We'll use the blob URL directly for preview
     return NextResponse.json({
       success: true,
       previewUrl: `/preview/${presentationId}`,
-      blobUrl: blob.url, // Public blob URL
+      blobUrl: blob.url, // Public blob URL (can be used directly)
       presentationId,
     })
   } catch (error) {
@@ -38,3 +44,6 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+
+// Export cache for use in preview route
+export { blobUrlCache }
