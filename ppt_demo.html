@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Ethics Presentation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow-x: hidden;
+            background: #000;
+        }
+        
+        .slide-container {
+            scroll-snap-type: y mandatory;
+            overflow-y: scroll;
+            height: 100vh;
+        }
+        
+        .slide {
+            width: 100vw;
+            height: 100vh;
+            scroll-snap-align: start;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        
+        .slide::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            z-index: 1;
+        }
+        
+        .slide::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 2;
+        }
+        
+        .content {
+            position: relative;
+            z-index: 3;
+            max-width: 1200px;
+            padding: 80px;
+            text-align: center;
+        }
+        
+        /* Slide 1 - Title */
+        #slide1::before {
+            background-image: url('https://images.unsplash.com/photo-1677442136019-21780ecad995?w=1920&h=1080&fit=crop');
+            animation: zoomIn 20s ease-in-out infinite alternate;
+        }
+        
+        #slide1::after {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.85), rgba(139, 92, 246, 0.85));
+        }
+        
+        #slide1 h1 {
+            font-size: 7em;
+            color: #fff;
+            text-transform: uppercase;
+            letter-spacing: 15px;
+            font-weight: 900;
+            margin-bottom: 30px;
+            text-shadow: 0 20px 40px rgba(0,0,0,0.5);
+            animation: fadeInDown 1.5s ease-out;
+        }
+        
+        #slide1 p {
+            font-size: 2em;
+            color: rgba(255,255,255,0.95);
+            font-weight: 300;
+            letter-spacing: 3px;
+            animation: fadeInUp 1.5s ease-out 0.5s backwards;
+        }
+        
+        /* Slide 2 - Bias & Fairness */
+        #slide2::before {
+            background-image: url('https://images.unsplash.com/photo-1509228468518-180dd4864904?w=1920&h=1080&fit=crop');
+        }
+        
+        #slide2::after {
+            background: linear-gradient(45deg, rgba(236, 72, 153, 0.9), rgba(219, 39, 119, 0.85));
+            mix-blend-mode: multiply;
+        }
+        
+        #slide2 .content {
+            text-align: left;
+        }
+        
+        #slide2 h2 {
+            font-size: 5em;
+            color: #fff;
+            margin-bottom: 40px;
+            font-weight: 800;
+            text-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border-left: 10px solid #fff;
+            padding-left: 30px;
+            animation: slideInLeft 1s ease-out;
+        }
+        
+        #slide2 ul {
+            list-style: none;
+        }
+        
+        #slide2 li {
+            font-size: 1.8em;
+            color: #fff;
+            margin: 30px 0;
+            padding-left: 60px;
+            position: relative;
+            animation: fadeIn 1s ease-out forwards;
+            opacity: 0;
+            font-weight: 300;
+        }
+        
+        #slide2 li:nth-child(1) { animation-delay: 0.3s; }
+        #slide2 li:nth-child(2) { animation-delay: 0.6s; }
+        #slide2 li:nth-child(3) { animation-delay: 0.9s; }
+        
+        #slide2 li::before {
+            content: '◆';
+            position: absolute;
+            left: 0;
+            color: #fff;
+            font-size: 1.5em;
+        }
+        
+        /* Slide 3 - Privacy */
+        #slide3::before {
+            background-image: url('https://images.unsplash.com/photo-1558494949-ef010cbdcc31?w=1920&h=1080&fit=crop');
+            filter: brightness(0.7);
+        }
+        
+        #slide3::after {
+            background: radial-gradient(circle at center, rgba(6, 182, 212, 0.85), rgba(3, 105, 161, 0.9));
+            mix-blend-mode: overlay;
+        }
+        
+        #slide3 h2 {
+            font-size: 5.5em;
+            color: #fff;
+            margin-bottom: 50px;
+            font-weight: 900;
+            text-shadow: 0 15px 35px rgba(0,0,0,0.6);
+            animation: scaleIn 1s ease-out;
+        }
+        
+        .privacy-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            margin-top: 50px;
+        }
+        
+        .privacy-card {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(20px);
+            padding: 50px;
+            border-radius: 30px;
+            border: 2px solid rgba(255,255,255,0.3);
+            animation: fadeInUp 1s ease-out forwards;
+            opacity: 0;
+            transition: transform 0.3s ease;
+        }
+        
+        .privacy-card:hover {
+            transform: translateY(-10px);
+            background: rgba(255,255,255,0.15);
+        }
+        
+        .privacy-card:nth-child(1) { animation-delay: 0.2s; }
+        .privacy-card:nth-child(2) { animation-delay: 0.4s; }
+        .privacy-card:nth-child(3) { animation-delay: 0.6s; }
+        .privacy-card:nth-child(4) { animation-delay: 0.8s; }
+        
+        .privacy-card h3 {
+            font-size: 2.2em;
+            color: #fff;
+            margin-bottom: 20px;
+            font-weight: 700;
+        }
+        
+        .privacy-card p {
+            font-size: 1.3em;
+            color: rgba(255,255,255,0.9);
+            line-height: 1.6;
+        }
+        
+        /* Slide 4 - Transparency */
+        #slide4::before {
+            background-image: url('https://images.unsplash.com/photo-1639322537228-f710d846310a?w=1920&h=1080&fit=crop');
+        }
+        
+        #slide4::after {
+            background: linear-gradient(225deg, rgba(251, 146, 60, 0.88), rgba(234, 88, 12, 0.88));
+        }
+        
+        #slide4 h2 {
+            font-size: 5em;
+            color: #fff;
+            margin-bottom: 60px;
+            font-weight: 900;
+            text-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            animation: bounceIn 1s ease-out;
+        }
+        
+        .transparency-container {
+            display: flex;
+            justify-content: space-around;
+            align-items: stretch;
+            gap: 30px;
+        }
+        
+        .transparency-box {
+            flex: 1;
+            background: rgba(255,255,255,0.12);
+            backdrop-filter: blur(15px);
+            padding: 60px 40px;
+            border-radius: 25px;
+            border: 3px solid rgba(255,255,255,0.4);
+            animation: slideInUp 1s ease-out forwards;
+            opacity: 0;
+            transition: all 0.3s ease;
+        }
+        
+        .transparency-box:hover {
+            transform: scale(1.05);
+            background: rgba(255,255,255,0.18);
+        }
+        
+        .transparency-box:nth-child(1) { animation-delay: 0.2s; }
+        .transparency-box:nth-child(2) { animation-delay: 0.5s; }
+        .transparency-box:nth-child(3) { animation-delay: 0.8s; }
+        
+        .transparency-icon {
+            font-size: 4em;
+            margin-bottom: 25px;
+        }
+        
+        .transparency-box h3 {
+            font-size: 2em;
+            color: #fff;
+            margin-bottom: 20px;
+            font-weight: 700;
+        }
+        
+        .transparency-box p {
+            font-size: 1.3em;
+            color: rgba(255,255,255,0.95);
+            line-height: 1.7;
+        }
+        
+        /* Slide 5 - Future */
+        #slide5::before {
+            background-image: url('https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=1920&h=1080&fit=crop');
+            animation: slowZoom 25s ease-in-out infinite alternate;
+        }
+        
+        #slide5::after {
+            background: linear-gradient(180deg, rgba(16, 185, 129, 0.85), rgba(5, 150, 105, 0.9));
+        }
+        
+        #slide5 h2 {
+            font-size: 5.5em;
+            color: #fff;
+            margin-bottom: 50px;
+            font-weight: 900;
+            text-shadow: 0 15px 40px rgba(0,0,0,0.6);
+            animation: rotateIn 1.2s ease-out;
+        }
+        
+        .future-content {
+            background: rgba(255,255,255,0.08);
+            backdrop-filter: blur(25px);
+            padding: 70px;
+            border-radius: 40px;
+            border: 3px solid rgba(255,255,255,0.3);
+            animation: fadeIn 1.5s ease-out 0.5s backwards;
+        }
+        
+        .future-content p {
+            font-size: 2em;
+            color: #fff;
+            line-height: 1.8;
+            margin-bottom: 40px;
+            font-weight: 300;
+        }
+        
+        .cta-button {
+            display: inline-block;
+            padding: 25px 70px;
+            background: #fff;
+            color: #059669;
+            font-size: 1.6em;
+            font-weight: 700;
+            border-radius: 50px;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        .cta-button:hover {
+            transform: scale(1.1);
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        }
+        
+        /* Animations */
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes slideInLeft {
+            from {
+                opacity: 0;
+                transform: translateX(-100px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        @keyframes slideInUp {
+            from {
+                opacity: 0;
+                transform: translateY(80px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes fadeIn {
+            to {
+                opacity: 1;
+            }
+        }
+        
+        @keyframes scaleIn {
+            from {
+                opacity: 0;
+                transform: scale(0.5);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+        
+        @keyframes bounceIn {
+            0% {
+                opacity: 0;
+                transform: scale(0.3) translateY(-50px);
+            }
+            50% {
+                transform: scale(1.05);
+            }
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+        
+        @keyframes rotateIn {
+            from {
+                opacity: 0;
+                transform: rotate(-10deg) scale(0.8);
+            }
+            to {
+                opacity: 1;
+                transform: rotate(0) scale(1);
+            }
+        }
+        
+        @keyframes zoomIn {
+            from {
+                transform: scale(1);
+            }
+            to {
+                transform: scale(1.1);
+            }
+        }
+        
+        @keyframes slowZoom {
+            from {
+                transform: scale(1);
+            }
+            to {
+                transform: scale(1.15);
+            }
+        }
+        
+        @keyframes pulse {
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.05);
+            }
+        }
+        
+        [contenteditable] {
+            outline: none;
+        }
+        
+        [contenteditable]:hover {
+            outline: 2px dashed rgba(255,255,255,0.5);
+            outline-offset: 5px;
+        }
+        
+        [contenteditable]:focus {
+            outline: 3px solid rgba(255,255,255,0.8);
+            outline-offset: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="slide-container">
+        <!-- Slide 1: Title -->
+        <div class="slide" id="slide1">
+            <div class="content">
+                <h1 contenteditable="true">AI ETHICS</h1>
+                <p contenteditable="true">Navigating the Moral Landscape of Artificial Intelligence</p>
+            </div>
+        </div>
+        
+        <!-- Slide 2: Bias & Fairness -->
+        <div class="slide" id="slide2">
+            <div class="content">
+                <h2 contenteditable="true">Bias & Fairness</h2>
+                <ul>
+                    <li contenteditable="true">AI systems inherit biases from training data, perpetuating societal inequalities</li>
+                    <li contenteditable="true">Algorithmic discrimination affects hiring, lending, and criminal justice decisions</li>
+                    <li contenteditable="true">Ensuring diverse datasets and inclusive design is critical for ethical AI</li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- Slide 3: Privacy & Data Protection -->
+        <div class="slide" id="slide3">
+            <div class="content">
+                <h2 contenteditable="true">Privacy & Data Protection</h2>
+                <div class="privacy-grid">
+                    <div class="privacy-card">
+                        <h3 contenteditable="true">🔒 Data Collection</h3>
+                        <p contenteditable="true">Massive amounts of personal data fuel AI, raising consent concerns</p>
+                    </div>
+                    <div class="privacy-card">
+                        <h3 contenteditable="true">👁️ Surveillance</h3>
+                        <p contenteditable="true">Facial recognition and tracking technologies threaten anonymity</p>
+                    </div>
+                    <div class="privacy-card">
+                        <h3 contenteditable="true">🛡️ Security</h3>
+                        <p contenteditable="true">Protecting sensitive information from breaches and misuse</p>
+                    </div>
+                    <div class="privacy-card">
+                        <h3 contenteditable="true">⚖️ Rights</h3>
+                        <p contenteditable="true">Balancing innovation with individual privacy rights</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Slide 4: Transparency & Accountability -->
+        <div class="slide" id="slide4">
+            <div class="content">
+                <h2 contenteditable="true">Transparency & Accountability</h2>
+                <div class="transparency-container">
+                    <div class="transparency-box">
+                        <div class="transparency-icon">🔍</div>
+                        <h3 contenteditable="true">Explainability</h3>
+                        <p contenteditable="true">Understanding how AI makes decisions is essential for trust</p>
+                    </div>
+                    <div class="transparency-box">
+                        <div class="transparency-icon">📋</div>
+                        <h3 contenteditable="true">Auditability</h3>
+                        <p contenteditable="true">Systems must be reviewable to identify errors and biases</p>
+                    </div>
+                    <div class="transparency-box">
+                        <div class="transparency-icon">👥</div>
+                        <h3 contenteditable="true">Responsibility</h3>
+                        <p contenteditable="true">Clear lines of accountability when AI causes harm</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Slide 5: The Path Forward -->
+        <div class="slide" id="slide5">
+            <div class="content">
+                <h2 contenteditable="true">The Path Forward</h2>
+                <div class="future-content">
+                    <p contenteditable="true">Building ethical AI requires collaboration between technologists, policymakers, ethicists, and society. We must prioritize human values, establish robust governance frameworks, and ensure AI serves humanity's best interests.</p>
+                    <a href="#" class="cta-button" contenteditable="true">Join the Conversation</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
