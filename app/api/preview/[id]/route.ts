@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { list } from '@vercel/blob'
-import { blobUrlCache } from '../save-ppt/route'
+import { blobUrlCache } from '@/lib/blob-cache'
 
 export async function GET(
   request: NextRequest,
@@ -13,19 +13,24 @@ export async function GET(
     // First, try to get from cache (fastest)
     const cachedUrl = blobUrlCache.get(id)
     if (cachedUrl) {
-      const response = await fetch(cachedUrl)
-      if (response.ok) {
-        const html = await response.text()
-        return new NextResponse(html, {
-          headers: {
-            'Content-Type': 'text/html',
-            'Cache-Control': 'public, max-age=3600',
-          },
-        })
+      try {
+        const response = await fetch(cachedUrl)
+        if (response.ok) {
+          const html = await response.text()
+          return new NextResponse(html, {
+            headers: {
+              'Content-Type': 'text/html',
+              'Cache-Control': 'public, max-age=3600',
+            },
+          })
+        }
+      } catch (error) {
+        // If cached URL fails, continue to search in blob storage
+        console.warn('Cached URL failed, searching in blob storage:', error)
       }
     }
     
-    // If not in cache, search in blob storage
+    // If not in cache or cache failed, search in blob storage
     const { blobs } = await list({
       prefix: 'presentations/',
     })

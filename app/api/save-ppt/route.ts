@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { put } from '@vercel/blob'
-
-// Simple in-memory cache to map ID to blob URL
-// In production, consider using Vercel KV for persistence
-const blobUrlCache = new Map<string, string>()
+import { blobUrlCache } from '@/lib/blob-cache'
 
 export async function POST(request: NextRequest) {
   try {
@@ -44,6 +41,3 @@ export async function POST(request: NextRequest) {
     )
   }
 }
-
-// Export cache for use in preview route
-export { blobUrlCache }
