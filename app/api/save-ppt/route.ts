@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { writeFile, mkdir } from 'fs/promises'
-import { join } from 'path'
 import { randomUUID } from 'crypto'
+import { put } from '@vercel/blob'
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,22 +16,17 @@ export async function POST(request: NextRequest) {
     // Generate unique ID for the presentation
     const presentationId = randomUUID()
     
-    // Create public directory if it doesn't exist
-    const publicDir = join(process.cwd(), 'public', 'presentations')
-    try {
-      await mkdir(publicDir, { recursive: true })
-    } catch (error) {
-      // Directory might already exist
-    }
-
-    // Save HTML file
-    const filePath = join(publicDir, `${presentationId}.html`)
-    await writeFile(filePath, html, 'utf-8')
-
-    // Return preview URL
+    // Upload HTML to Vercel Blob Storage
+    const blob = await put(`presentations/${presentationId}.html`, html, {
+      access: 'public',
+      contentType: 'text/html',
+    })
+    
+    // Return preview URL (use the blob URL directly)
     return NextResponse.json({
       success: true,
       previewUrl: `/preview/${presentationId}`,
+      blobUrl: blob.url, // Store blob URL for direct access if needed
       presentationId,
     })
   } catch (error) {
@@ -43,4 +37,3 @@ export async function POST(request: NextRequest) {
     )
   }
 }
-
