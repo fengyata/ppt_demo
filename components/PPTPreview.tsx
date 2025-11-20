@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { ChevronLeft, ChevronRight, Maximize, Download, X, Presentation, FileJson, Share2, PanelLeft, PanelLeftClose } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Maximize, Share2, PanelLeft, PanelLeftClose, X, Presentation } from 'lucide-react'
 
 interface PPTPreviewProps {
   html: string
@@ -17,22 +17,10 @@ export function PPTPreview({ html, title = 'Presentation', autoShow = false, onC
   const [currentSlide, setCurrentSlide] = useState(1)
   const [totalSlides, setTotalSlides] = useState(0)
   const [iframeRef, setIframeRef] = useState<HTMLIFrameElement | null>(null)
-  const [isExporting, setIsExporting] = useState(false)
   const [isSharing, setIsSharing] = useState(false)
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [slidesData, setSlidesData] = useState<string[]>([])
-
-  // Load pptxgenjs via CDN
-  useEffect(() => {
-      if (!document.getElementById('pptxgen-script')) {
-          const script = document.createElement('script')
-          script.id = 'pptxgen-script'
-          script.src = 'https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js'
-          script.async = true
-          document.body.appendChild(script)
-      }
-  }, [])
 
   // Thumbnail Generation
   useEffect(() => {
@@ -49,12 +37,12 @@ export function PPTPreview({ html, title = 'Presentation', autoShow = false, onC
                     <html>
                     <head>
                         ${styles}
-                        <style>
-                            body { margin: 0; overflow: hidden; width: 1280px; height: 720px; transform: scale(0.15); transform-origin: top left; background: white; }
-                            .slide-container { width: 100%; height: 100%; overflow: hidden; }
-                            .slide { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; }
-                            ::-webkit-scrollbar { display: none; }
-                        </style>
+                    <style>
+                        body { margin: 0; overflow: hidden; width: 100vw; height: 100vh; background: white; }
+                        .slide-container { width: 100%; height: 100%; overflow: hidden; }
+                        .slide { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; }
+                        ::-webkit-scrollbar { display: none; }
+                    </style>
                     </head>
                     <body>
                         <div class="slide-container">${el.outerHTML}</div>
@@ -123,12 +111,11 @@ export function PPTPreview({ html, title = 'Presentation', autoShow = false, onC
   // Watch activeSlide prop for auto-scroll
   useEffect(() => {
       if (activeSlide && activeSlide > 0) {
-          // Need a slight delay to allow iframe reload if html changed simultaneously
           setTimeout(() => {
               navigateTo(activeSlide)
           }, 500)
       }
-  }, [activeSlide, html]) // Re-run when html updates (iframe reloads)
+  }, [activeSlide, html]) 
 
   const navigateTo = (index: number) => {
       iframeRef?.contentWindow?.postMessage({ type: 'GOTO', slide: index }, '*')
@@ -158,109 +145,6 @@ export function PPTPreview({ html, title = 'Presentation', autoShow = false, onC
       } finally {
           setIsSharing(false)
       }
-  }
-
-  const handleDownloadHTML = () => {
-    const blob = new Blob([html], { type: 'text/html' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${title.replace(/\s+/g, '_')}.html`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-  }
-
-  const handleDownloadPPTX = async () => {
-    try {
-      setIsExporting(true)
-      
-      // @ts-ignore
-      if (typeof window.PptxGenJS === 'undefined') {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-           // @ts-ignore
-          if (typeof window.PptxGenJS === 'undefined') {
-            alert('PPTX generator is still loading. Please try again in a moment.')
-            return
-          }
-      }
-
-      // @ts-ignore
-      const pres = new window.PptxGenJS()
-
-      pres.title = title
-      pres.layout = 'LAYOUT_16x9'
-
-      const parser = new DOMParser()
-      const doc = parser.parseFromString(html, 'text/html')
-      const slides = doc.querySelectorAll('.slide')
-
-      const cleanText = (text: string | null) => text ? text.replace(/\s+/g, ' ').trim() : ''
-
-      slides.forEach((slideElem, index) => {
-        const slide = pres.addSlide()
-        
-        let bgImage = null
-        if (slideElem instanceof HTMLElement && slideElem.style.backgroundImage) {
-             const match = slideElem.style.backgroundImage.match(/url\(['"]?(.*?)['"]?\)/)
-             if (match && match[1]) {
-                 bgImage = match[1]
-             }
-        }
-        
-        if (bgImage) {
-            slide.background = { path: bgImage }
-        } else {
-            slide.background = { color: "FFFFFF" }
-        }
-
-        const titleElem = slideElem.querySelector('h1, h2, .title')
-        if (titleElem) {
-            slide.addText(cleanText(titleElem.textContent), { 
-                x: 0.5, y: 0.5, w: '90%', h: 1, 
-                fontSize: 32, bold: true, color: '000000', align: 'center',
-                fontFace: 'Arial' 
-            })
-        }
-
-        const contentLines: string[] = []
-        slideElem.querySelectorAll('li').forEach(li => {
-            contentLines.push(`• ${cleanText(li.textContent)}`)
-        })
-        
-        if (contentLines.length === 0) {
-            slideElem.querySelectorAll('p').forEach(p => {
-                const text = cleanText(p.textContent)
-                if (text.length > 0) contentLines.push(text)
-            })
-        }
-
-        if (contentLines.length > 0) {
-            slide.addText(contentLines.join('\n'), {
-                x: 1, y: 2, w: '80%', h: 4,
-                fontSize: 18, color: '333333', align: 'left',
-                lineSpacing: 30,
-                fontFace: 'Arial'
-            })
-        }
-
-        const imgElem = slideElem.querySelector('img')
-        if (imgElem && imgElem.src) {
-            slide.addImage({ 
-                path: imgElem.src, 
-                x: 6.5, y: 2, w: 3, h: 3 
-            })
-        }
-      })
-
-      await pres.writeFile({ fileName: `${title.replace(/\s+/g, '_')}.pptx` })
-    } catch (error) {
-      console.error('PPTX generation failed:', error)
-      alert('Failed to generate PPTX.')
-    } finally {
-      setIsExporting(false)
-    }
   }
 
   const handleFullscreen = () => {
@@ -296,7 +180,7 @@ export function PPTPreview({ html, title = 'Presentation', autoShow = false, onC
                           <iframe 
                             srcDoc={slideHtml} 
                             className="absolute top-0 left-0 border-0 pointer-events-none origin-top-left bg-white" 
-                            style={{ width: '1280px', height: '720px', transform: 'scale(0.135)' }} // 1280*0.135 = 172.8 (fits in w-48 with padding)
+                            style={{ width: '1280px', height: '720px', transform: 'scale(0.135)' }} // 1280*0.135 = 172.8
                             tabIndex={-1}
                           />
                           <div className="absolute inset-0 z-20" />
@@ -321,7 +205,7 @@ export function PPTPreview({ html, title = 'Presentation', autoShow = false, onC
               </div>
               <h3 className="font-medium text-sm text-foreground truncate max-w-[200px]">{title}</h3>
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-2">
               {/* Share Button (Primary) */}
               <button
                 onClick={handleShare}
@@ -335,30 +219,14 @@ export function PPTPreview({ html, title = 'Presentation', autoShow = false, onC
 
               <div className="h-4 w-[1px] bg-border mx-1" />
 
-              <button
-                onClick={handleDownloadPPTX}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
-                title="Download PPTX (Google Slides Compatible)"
-              >
-                <Download size={14} />
-                <span className="hidden lg:inline">PPTX</span>
-              </button>
-              
-              <button
-                onClick={handleDownloadHTML}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
-                title="Download HTML Source"
-              >
-                <FileJson size={14} />
-                <span className="hidden lg:inline">HTML</span>
-              </button>
-
+              {/* Fullscreen (Highlighted) */}
               <button
                 onClick={handleFullscreen}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
                 title="Full Screen"
               >
                  <Maximize size={14} />
+                 <span className="hidden sm:inline">Fullscreen</span>
               </button>
 
               {onClose && (
