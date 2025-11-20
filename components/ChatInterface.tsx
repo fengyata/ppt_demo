@@ -85,10 +85,10 @@ export function ChatInterface() {
       setMessages((prev) => [...prev, outlineMessage])
 
       // Stream outline content
-      const reader = outlineResponse.body?.getReader()
+      const outlineReader = outlineResponse.body?.getReader()
       const decoder = new TextDecoder()
 
-      if (!reader) {
+      if (!outlineReader) {
         throw new Error('Unable to read outline response stream')
       }
 
@@ -96,7 +96,7 @@ export function ChatInterface() {
       let fullOutline = ''
 
       while (true) {
-        const { done, value } = await reader.read()
+        const { done, value } = await outlineReader.read()
         if (done) break
 
         buffer += decoder.decode(value, { stream: true })
