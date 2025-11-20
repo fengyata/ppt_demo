@@ -86,24 +86,24 @@ export function ChatInterface() {
 
       // Stream outline content
       const outlineReader = outlineResponse.body?.getReader()
-      const decoder = new TextDecoder()
+      const outlineDecoder = new TextDecoder()
 
       if (!outlineReader) {
         throw new Error('Unable to read outline response stream')
       }
 
-      let buffer = ''
+      let outlineBuffer = ''
       let fullOutline = ''
 
       while (true) {
         const { done, value } = await outlineReader.read()
         if (done) break
 
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
+        outlineBuffer += outlineDecoder.decode(value, { stream: true })
+        const outlineLines = outlineBuffer.split('\n')
+        outlineBuffer = outlineLines.pop() || ''
 
-        for (const line of lines) {
+        for (const line of outlineLines) {
           if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.slice(6))

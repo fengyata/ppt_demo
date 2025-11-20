@@ -16,92 +16,114 @@ export async function POST(request: NextRequest) {
     const genAI = new GoogleGenerativeAI(apiKey)
     const model = genAI.getGenerativeModel({ model: 'models/gemini-3-pro-preview' })
 
-    // Parse outline to extract slide information
-    const slides = parseOutline(outline)
-    const totalSlides = slides.length
-
     // Create streaming response
     const encoder = new TextEncoder()
     const stream = new ReadableStream({
       async start(controller) {
-        let allSlidesHtml = ''
-        const baseHtml = getBaseHtmlTemplate()
-
         try {
           // Send start event
+          const slides = parseOutline(outline)
+          const totalSlides = slides.length
+
           controller.enqueue(
             encoder.encode(`data: ${JSON.stringify({ type: 'start', total: totalSlides })}\n\n`)
           )
 
-          // Generate all slides in parallel for maximum speed
-          const slidePromises = slides.map(async (slide, index) => {
-            const slideIndex = index
-            
-            // Ultimate Minimalist Prompt:
-            // Removed all design directives. Just pure content + technical requirement.
-            
-            const slidePrompt = `Generate the HTML for a single presentation slide.
-
-User Request: "${userPrompt}"
-Slide Content:
-${slide.content}
-
-Technical Requirements (STRICT):
-1. Output ONLY valid HTML for a single \`div\` with class "slide".
-2. The outer container MUST be: \`<div class="slide" id="slide${slideIndex + 1}">...</div>\`
-3. Scope all CSS to this ID (#slide${slideIndex + 1}) to prevent conflicts.
-4. Do NOT include \`<html>\`, \`<head>\`, or \`<body>\` tags.
-5. You may use Unsplash images for backgrounds.
-
-Design:
-Create the most beautiful, modern, and appropriate design for this content. Surprise me.`
-
-            const result = await model.generateContent(slidePrompt)
-            const response = await result.response
-            let slideHtml = response.text()
-
-            // Clean markdown code block markers
-            slideHtml = slideHtml.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim()
-
-            // Ensure proper slide format
-            if (!slideHtml.includes('<div') && !slideHtml.includes('.slide')) {
-              slideHtml = `<div class="slide" id="slide${slideIndex + 1}">
-                <div class="content">
-                    ${slideHtml}
-                </div>
-            </div>`
-            } else if (!slideHtml.includes('class="slide"') && !slideHtml.includes("class='slide'")) {
-              slideHtml = slideHtml.replace(/<div/g, '<div class="slide"').replace(/class="slide"/g, `class="slide" id="slide${slideIndex + 1}"`)
-            }
-
-            return { slideIndex, slideHtml }
-          })
-
-          // Generate all slides in parallel and track progress
-          let completedCount = 0
-          const results = await Promise.all(
-            slidePromises.map(async (promise, index) => {
-              const result = await promise
-              completedCount++
-              // Send progress update
-              controller.enqueue(
-                encoder.encode(
-                  `data: ${JSON.stringify({ type: 'progress', current: completedCount, total: totalSlides, slideNumber: completedCount })}\n\n`
-                )
-              )
-              return result
-            })
+          // Send an initial progress to show we are working
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ type: 'progress', current: 1, total: totalSlides, slideNumber: 1 })}\n\n`
+            )
           )
 
-          // Sort by slide index and combine
-          for (const { slideIndex, slideHtml } of results.sort((a, b) => a.slideIndex - b.slideIndex)) {
-            allSlidesHtml += slideHtml + '\n'
-          }
+          // "Design-First" Prompt Strategy
+          // Leveraging Gemini 3 Pro's aesthetic capabilities to create high-end visuals.
+          
+          const fullPrompt = `Role: Award-Winning Digital Designer & Creative Coder.
+Task: Craft a visually stunning, immersive HTML presentation (PPT) based on the content below.
 
-          // Combine full HTML
-          const fullHtml = baseHtml.replace('<!-- SLIDES_PLACEHOLDER -->', allSlidesHtml)
+Context:
+- **User Vibe/Request**: "${userPrompt}"
+- **Content Outline**:
+${outline}
+
+---
+
+### 🎨 Design Directive (The "Gemini" Touch)
+Don't just build slides; build an **experience**. 
+1.  **Analyze the Topic**: 
+    - If Tech/AI: Go for "Dark Mode", "Neon Accents", "Glassmorphism", "Mesh Gradients".
+    - If Business: Go for "Swiss Style", "Clean Typography", "Bento Grids", "Whitespace".
+    - If Creative: Go "Bold", "Brutalist", or "Editorial".
+    - **Priority**: If the user asked for a specific style in "${userPrompt}", OBEY it strictly. Otherwise, surprise me with your best aesthetic judgment.
+
+2.  **Visuals & CSS**:
+    - **Typography**: Use Google Fonts. Pair a strong Display font (headings) with a clean Sans/Serif (body).
+    - **Backgrounds**: Use CSS \`linear-gradient\`, \`radial-gradient\`, or high-quality Unsplash images (\`source.unsplash.com/random/?{keyword}\`) to create depth.
+    - **Components**: layout content using **Cards**, **Split Screens**, **Grids**, and **Big Typography**. Avoid boring bullet lists; turn them into icon grids or feature cards.
+    - **Polish**: Add \`box-shadow\`, \`backdrop-filter: blur()\`, \`border-radius\`, and subtle \`animations\` (fade-in, slide-up).
+
+---
+
+### 🛠 Technical Requirements (Strict)
+1.  **Output**: A single valid HTML file starting with \`<!DOCTYPE html>\`.
+2.  **Structure**:
+    \`\`\`html
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <!-- Import Google Fonts, Icons (remixicon/font-awesome), and Define Variables in :root -->
+        <style>
+            /* GLOBAL RESET & THEME */
+            :root { --bg: ...; --text: ...; --accent: ...; }
+            body { margin: 0; overflow: hidden; background: var(--bg); color: var(--text); font-family: ...; }
+            
+            /* SLIDE CONTAINER (Required for Navigation) */
+            .slide-container { width: 100vw; height: 100vh; overflow-y: scroll; scroll-snap-type: y mandatory; scroll-behavior: smooth; }
+            
+            /* SLIDE (Required for Layout) */
+            .slide { 
+                width: 100vw; height: 100vh; scroll-snap-align: start; 
+                position: relative; overflow: hidden; 
+                display: flex; flex-direction: column; justify-content: center; align-items: center;
+                padding: 4rem; box-sizing: border-box;
+            }
+            
+            /* YOUR CUSTOM CLASSES (Cards, Grids, Typography, Animations) */
+            .glass-card { ... }
+            .gradient-text { ... }
+            .animate-in { ... }
+        </style>
+    </head>
+    <body>
+        <div class="slide-container">
+            <!-- SLIDE 1 -->
+            <div class="slide" id="slide1"> ...content... </div>
+            <!-- SLIDE 2 -->
+            <div class="slide" id="slide2"> ...content... </div>
+            ...
+        </div>
+    </body>
+    </html>
+    \`\`\`
+3.  **No Javascript**: Just pure HTML/CSS. The parent window handles navigation logic.
+
+Generate the complete, polished HTML code now.`
+
+          const result = await model.generateContent(fullPrompt)
+          const response = await result.response
+          let fullHtml = response.text()
+
+          // Clean markdown
+          fullHtml = fullHtml.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim()
 
           // Send complete event
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ type: 'progress', current: totalSlides, total: totalSlides, slideNumber: totalSlides })}\n\n`
+            )
+          )
+          
           controller.enqueue(
             encoder.encode(
               `data: ${JSON.stringify({ type: 'complete', html: fullHtml })}\n\n`
@@ -136,88 +158,21 @@ Create the most beautiful, modern, and appropriate design for this content. Surp
   }
 }
 
-// Parse outline to extract slide information
+// Helper to parse outline count only
 function parseOutline(outline: string): Array<{ content: string }> {
   const slides: Array<{ content: string }> = []
   const lines = outline.split('\n')
-  
   let currentSlide: { content: string } | null = null
-  let slideContent: string[] = []
 
   for (const line of lines) {
-    // Detect new slide start (## or # at the beginning)
     if (line.match(/^##?\s*(Slide|Page)\s*\d+[:：]/i) || line.match(/^##?\s*\d+[:：]/)) {
-      // Save previous slide
-      if (currentSlide) {
-        currentSlide.content = slideContent.join('\n')
-        slides.push(currentSlide)
-      }
-      // Start new slide
+      if (currentSlide) slides.push(currentSlide)
       currentSlide = { content: '' }
-      slideContent = [line]
     } else if (currentSlide) {
-      slideContent.push(line)
+      currentSlide.content += line + '\n'
     }
   }
-
-  // Save last slide
-  if (currentSlide) {
-    currentSlide.content = slideContent.join('\n')
-    slides.push(currentSlide)
-  }
-
-  // If no slides parsed, use entire outline as one slide
-  if (slides.length === 0) {
-    slides.push({ content: outline })
-  }
-
+  if (currentSlide) slides.push(currentSlide)
+  if (slides.length === 0) slides.push({ content: outline })
   return slides
-}
-
-// Get base HTML template
-function getBaseHtmlTemplate(): string {
-  // Removed hardcoded font-family from body to allow slides to define their own
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Generated PPT</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            /* Removed default font to allow slides to define their own typography */
-            overflow-x: hidden;
-            background: #000;
-            color: white;
-        }
-        .slide-container {
-            scroll-snap-type: y mandatory;
-            overflow-y: scroll;
-            height: 100vh;
-        }
-        .slide {
-            width: 100vw;
-            height: 100vh;
-            scroll-snap-align: start;
-            position: relative;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-            background-size: cover;
-            background-position: center;
-        }
-    </style>
-</head>
-<body>
-    <div class="slide-container">
-        <!-- SLIDES_PLACEHOLDER -->
-    </div>
-</body>
-</html>`
 }
