@@ -10,9 +10,10 @@ interface PPTPreviewProps {
   onClose?: () => void
   className?: string
   showThumbnails?: boolean
+  activeSlide?: number
 }
 
-export function PPTPreview({ html, title = 'Presentation', autoShow = false, onClose, className = '', showThumbnails = false }: PPTPreviewProps) {
+export function PPTPreview({ html, title = 'Presentation', autoShow = false, onClose, className = '', showThumbnails = false, activeSlide }: PPTPreviewProps) {
   const [currentSlide, setCurrentSlide] = useState(1)
   const [totalSlides, setTotalSlides] = useState(0)
   const [iframeRef, setIframeRef] = useState<HTMLIFrameElement | null>(null)
@@ -43,14 +44,13 @@ export function PPTPreview({ html, title = 'Presentation', autoShow = false, onC
               const slideEls = doc.querySelectorAll('.slide')
               
               const slides = Array.from(slideEls).map(el => {
-                  // Standard 16:9 content without scaling inside
                   return `
                     <!DOCTYPE html>
                     <html>
                     <head>
                         ${styles}
                         <style>
-                            body { margin: 0; overflow: hidden; background: white; width: 100vw; height: 100vh; }
+                            body { margin: 0; overflow: hidden; width: 1280px; height: 720px; transform: scale(0.15); transform-origin: top left; background: white; }
                             .slide-container { width: 100%; height: 100%; overflow: hidden; }
                             .slide { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; }
                             ::-webkit-scrollbar { display: none; }
@@ -119,6 +119,16 @@ export function PPTPreview({ html, title = 'Presentation', autoShow = false, onC
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
   }, [])
+
+  // Watch activeSlide prop for auto-scroll
+  useEffect(() => {
+      if (activeSlide && activeSlide > 0) {
+          // Need a slight delay to allow iframe reload if html changed simultaneously
+          setTimeout(() => {
+              navigateTo(activeSlide)
+          }, 500)
+      }
+  }, [activeSlide, html]) // Re-run when html updates (iframe reloads)
 
   const navigateTo = (index: number) => {
       iframeRef?.contentWindow?.postMessage({ type: 'GOTO', slide: index }, '*')
