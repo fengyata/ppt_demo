@@ -37,25 +37,24 @@ export async function POST(request: NextRequest) {
           const slidePromises = slides.map(async (slide, index) => {
             const slideIndex = index
             
-            // Optimized prompt - shorter and more focused
-            const slidePrompt = `Generate a single modern HTML slide for a presentation.
+            // Ultimate Minimalist Prompt:
+            // Removed all design directives. Just pure content + technical requirement.
+            
+            const slidePrompt = `Generate the HTML for a single presentation slide.
 
+User Request: "${userPrompt}"
 Slide Content:
 ${slide.content}
 
-User Request: ${userPrompt}
+Technical Requirements (STRICT):
+1. Output ONLY valid HTML for a single \`div\` with class "slide".
+2. The outer container MUST be: \`<div class="slide" id="slide${slideIndex + 1}">...</div>\`
+3. Scope all CSS to this ID (#slide${slideIndex + 1}) to prevent conflicts.
+4. Do NOT include \`<html>\`, \`<head>\`, or \`<body>\` tags.
+5. You may use Unsplash images for backgrounds.
 
-Requirements:
-- Generate ONLY the slide HTML (a single <div class="slide">...</div>)
-- Modern CSS with gradients and animations
-- Beautiful color scheme
-- Smooth animations (fade-in, slide-in)
-- Rich content based on the provided information
-- Use English content
-- Can use Unsplash image URLs for backgrounds
-- Code must run directly in browser
-
-Output ONLY the HTML code, no explanations, no <!DOCTYPE>, <html>, <head>, <body> tags.`
+Design:
+Create the most beautiful, modern, and appropriate design for this content. Surprise me.`
 
             const result = await model.generateContent(slidePrompt)
             const response = await result.response
@@ -177,6 +176,7 @@ function parseOutline(outline: string): Array<{ content: string }> {
 
 // Get base HTML template
 function getBaseHtmlTemplate(): string {
+  // Removed hardcoded font-family from body to allow slides to define their own
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -190,9 +190,10 @@ function getBaseHtmlTemplate(): string {
             box-sizing: border-box;
         }
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            /* Removed default font to allow slides to define their own typography */
             overflow-x: hidden;
             background: #000;
+            color: white;
         }
         .slide-container {
             scroll-snap-type: y mandatory;
@@ -208,13 +209,8 @@ function getBaseHtmlTemplate(): string {
             align-items: center;
             justify-content: center;
             overflow: hidden;
-        }
-        .content {
-            position: relative;
-            z-index: 3;
-            max-width: 1200px;
-            padding: 80px;
-            text-align: center;
+            background-size: cover;
+            background-position: center;
         }
     </style>
 </head>
@@ -225,4 +221,3 @@ function getBaseHtmlTemplate(): string {
 </body>
 </html>`
 }
-

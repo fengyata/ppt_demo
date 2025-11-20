@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
+import { PPTPreview } from '@/components/PPTPreview'
 
 export default function PreviewPage() {
   const params = useParams()
@@ -50,28 +51,26 @@ export default function PreviewPage() {
   if (loading) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-black">
-        <div className="text-white text-lg">Loading presentation...</div>
+        <div className="text-white text-lg animate-pulse">Loading presentation...</div>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center bg-black">
-        <div className="text-red-500 text-lg">Error: {error}</div>
-        <div className="text-red-400 text-sm mt-2">ID: {id}</div>
+      <div className="fixed inset-0 flex flex-col items-center justify-center bg-gray-900 text-white p-4">
+        <div className="text-xl font-semibold mb-2 text-red-400">Error Loading Presentation</div>
+        <div className="text-gray-400 text-center max-w-md">{error}</div>
+        <div className="mt-4 text-xs text-gray-600">ID: {id}</div>
       </div>
     )
   }
 
   return (
-    <div className="fixed inset-0 w-full h-full bg-black">
-      <iframe
-        srcDoc={html}
-        className="w-full h-full border-0"
-        title="Presentation Preview"
-        style={{ display: 'block' }}
-      />
+    <div className="fixed inset-0 w-full h-full bg-gray-100 p-4 md:p-8">
+        <div className="w-full h-full max-w-7xl mx-auto">
+            <PPTPreview html={html} autoShow={true} />
+        </div>
     </div>
   )
 }

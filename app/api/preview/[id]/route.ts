@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { list } from '@vercel/blob'
-import { blobUrlCache } from '@/lib/blob-cache'
+import { head, list } from '@vercel/blob'
 
 export async function GET(
   request: NextRequest,
@@ -10,11 +9,19 @@ export async function GET(
     const { id } = params
     const blobPath = `presentations/${id}.html`
     
-    // First, try to get from cache (fastest)
-    const cachedUrl = blobUrlCache.get(id)
-    if (cachedUrl) {
-      try {
-        const response = await fetch(cachedUrl)
+    // According to Vercel Blob docs: https://vercel.com/docs/vercel-blob
+    // - Use head() to check if blob exists and get metadata
+    // - Use list() with prefix to find blobs
+    // - Public blobs can be accessed directly via URL
+    
+    // First, try to use head() to get blob metadata directly
+    // This is more efficient than listing all blobs
+    try {
+      const blob = await head(blobPath)
+      
+      if (blob) {
+        // Fetch the content from the public blob URL
+        const response = await fetch(blob.url)
         if (response.ok) {
           const html = await response.text()
           return new NextResponse(html, {
@@ -24,41 +31,29 @@ export async function GET(
             },
           })
         }
-      } catch (error) {
-        // If cached URL fails, continue to search in blob storage
-        console.warn('Cached URL failed, searching in blob storage:', error)
       }
+    } catch (headError) {
+      // If head() fails, try list() as fallback
+      console.warn('head() failed, trying list():', headError)
     }
     
-    // If not in cache or cache failed, search in blob storage
+    // Fallback: Use list() to find the blob
+    // This is less efficient but works if head() doesn't work
     const { blobs } = await list({
       prefix: 'presentations/',
     })
     
-    // Find blob by ID in pathname or URL
-    const blob = blobs.find(b => {
-      // Check if pathname contains the ID
-      if (b.pathname.includes(id)) return true
-      // Check if URL contains the ID
-      if (b.url.includes(id)) return true
-      return false
-    })
+    // Find exact match by pathname
+    const blob = blobs.find(b => b.pathname === blobPath)
     
     if (!blob) {
       console.error(`Blob not found for ID: ${id}`)
       console.error(`Searched path: ${blobPath}`)
-      console.error(`Available blobs count: ${blobs.length}`)
-      if (blobs.length > 0) {
-        console.error(`Sample blob paths:`, blobs.slice(0, 3).map(b => b.pathname))
-      }
       return NextResponse.json(
         { error: 'Presentation not found', id, path: blobPath },
         { status: 404 }
       )
     }
-    
-    // Cache the URL for future requests
-    blobUrlCache.set(id, blob.url)
     
     // Fetch the content from the public blob URL
     const response = await fetch(blob.url)

@@ -58,7 +58,7 @@ export function ChatInterface() {
     setIsGenerating(true)
 
     try {
-      // Generate outline
+      // Generate outline with streaming
       const outlineResponse = await fetch('/api/generate-outline', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -75,14 +75,74 @@ export function ChatInterface() {
         throw new Error('Failed to generate outline')
       }
 
-      const outlineData = await outlineResponse.json()
+      // Create outline message for streaming
+      const outlineMessageId = (Date.now() + 2).toString()
       const outlineMessage: Message = {
-        id: (Date.now() + 2).toString(),
+        id: outlineMessageId,
         role: 'assistant',
-        content: `I've generated a PPT outline for you:\n\n${outlineData.outline}\n\nGenerating PPT now...`,
+        content: 'Generating outline...\n\n',
+      }
+      setMessages((prev) => [...prev, outlineMessage])
+
+      // Stream outline content
+      const reader = outlineResponse.body?.getReader()
+      const decoder = new TextDecoder()
+
+      if (!reader) {
+        throw new Error('Unable to read outline response stream')
       }
 
-      setMessages((prev) => [...prev, outlineMessage])
+      let buffer = ''
+      let fullOutline = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+
+              if (data.type === 'chunk') {
+                // Append chunk to outline
+                fullOutline += data.content
+                setMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.id === outlineMessageId
+                      ? {
+                          ...msg,
+                          content: `I've generated a PPT outline for you:\n\n${fullOutline}`,
+                        }
+                      : msg
+                  )
+                )
+              } else if (data.type === 'complete') {
+                // Final outline
+                fullOutline = data.outline
+                setMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.id === outlineMessageId
+                      ? {
+                          ...msg,
+                          content: `I've generated a PPT outline for you:\n\n${fullOutline}\n\nGenerating PPT now...`,
+                        }
+                      : msg
+                  )
+                )
+              } else if (data.type === 'error') {
+                throw new Error(data.error || 'Error generating outline')
+              }
+            } catch (e) {
+              console.error('Error parsing outline stream data:', e)
+            }
+          }
+        }
+      }
 
       // Stream PPT generation
       setIsGeneratingPPT(true)
@@ -92,7 +152,7 @@ export function ChatInterface() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          outline: outlineData.outline,
+          outline: fullOutline,
           userPrompt: input,
         }),
       })

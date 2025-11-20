@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { put } from '@vercel/blob'
-import { blobUrlCache } from '@/lib/blob-cache'
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,19 +17,21 @@ export async function POST(request: NextRequest) {
     const presentationId = randomUUID()
     
     // Upload HTML to Vercel Blob Storage
+    // According to Vercel Blob docs: https://vercel.com/docs/vercel-blob
+    // - Use put() for server-side uploads
+    // - Set access: 'public' for public URLs
+    // - Set contentType for proper MIME type
     const blob = await put(`presentations/${presentationId}.html`, html, {
       access: 'public',
       contentType: 'text/html',
     })
     
-    // Cache the blob URL for quick lookup
-    blobUrlCache.set(presentationId, blob.url)
-    
     // Return preview URL with blob URL
+    // The blob.url is a public URL that can be accessed directly
     return NextResponse.json({
       success: true,
       previewUrl: `/preview/${presentationId}`,
-      blobUrl: blob.url, // Public blob URL (can be used directly)
+      blobUrl: blob.url, // Public blob URL from Vercel Blob
       presentationId,
     })
   } catch (error) {
