@@ -29,15 +29,16 @@ export async function POST(request: NextRequest) {
             encoder.encode(`data: ${JSON.stringify({ type: 'start', total: totalSlides })}\n\n`)
           )
 
-          // Send an initial progress to show we are working
+          // Send an initial progress
           controller.enqueue(
             encoder.encode(
-              `data: ${JSON.stringify({ type: 'progress', current: 1, total: totalSlides, slideNumber: 1 })}\n\n`
+              `data: ${JSON.stringify({ type: 'progress', current: 0, total: totalSlides, slideNumber: 0 })}\n\n`
             )
           )
 
-          // "Design-First" Prompt Strategy
-          // Leveraging Gemini 3 Pro's aesthetic capabilities to create high-end visuals.
+          // Stream Prompt Strategy:
+          // 1. Force CSS/Head first so we can render immediately.
+          // 2. Then Body/Slides.
           
           const fullPrompt = `Role: Award-Winning Digital Designer & Creative Coder.
 Task: Craft a visually stunning, immersive HTML presentation (PPT) based on the content below.
@@ -65,65 +66,75 @@ Don't just build slides; build an **experience**.
 
 ---
 
-### 🛠 Technical Requirements (Strict)
-1.  **Output**: A single valid HTML file starting with \`<!DOCTYPE html>\`.
-2.  **Structure**:
+### 🛠 Technical Requirements (Streaming Friendly)
+1.  **Output**: A single valid HTML file.
+2.  **Order**: You MUST output the \`<head>\` and \`<style>\` tags FIRST, completely, before starting the \`<body>\`. This allows real-time rendering.
+3.  **Structure**:
     \`\`\`html
     <!DOCTYPE html>
     <html lang="en">
     <head>
-        <!-- Import Google Fonts, Icons (remixicon/font-awesome), and Define Variables in :root -->
+        <!-- Styles and Fonts -->
         <style>
-            /* GLOBAL RESET & THEME */
-            :root { --bg: ...; --text: ...; --accent: ...; }
-            body { margin: 0; overflow: hidden; background: var(--bg); color: var(--text); font-family: ...; }
-            
-            /* SLIDE CONTAINER (Required for Navigation) */
-            .slide-container { width: 100vw; height: 100vh; overflow-y: scroll; scroll-snap-type: y mandatory; scroll-behavior: smooth; }
-            
-            /* SLIDE (Required for Layout) */
-            .slide { 
-                width: 100vw; height: 100vh; scroll-snap-align: start; 
-                position: relative; overflow: hidden; 
-                display: flex; flex-direction: column; justify-content: center; align-items: center;
-                padding: 4rem; box-sizing: border-box;
-            }
-            
-            /* YOUR CUSTOM CLASSES (Cards, Grids, Typography, Animations) */
-            .glass-card { ... }
-            .gradient-text { ... }
-            .animate-in { ... }
+            /* Define standard variables and .slide-container / .slide classes HERE */
+            /* .slide-container { scroll-snap-type: y mandatory; ... } */
+            /* .slide { height: 100vh; scroll-snap-align: start; ... } */
         </style>
     </head>
     <body>
         <div class="slide-container">
-            <!-- SLIDE 1 -->
-            <div class="slide" id="slide1"> ...content... </div>
-            <!-- SLIDE 2 -->
-            <div class="slide" id="slide2"> ...content... </div>
+            <div class="slide" id="slide1"> ... </div>
+            <div class="slide" id="slide2"> ... </div>
             ...
         </div>
+        <script>
+           // Optional: Any lightweight interaction scripts
+        </script>
     </body>
     </html>
     \`\`\`
-3.  **No Javascript**: Just pure HTML/CSS. The parent window handles navigation logic.
 
-Generate the complete, polished HTML code now.`
+Generate the complete HTML code now, streaming it token by token.`
 
-          const result = await model.generateContent(fullPrompt)
-          const response = await result.response
-          let fullHtml = response.text()
+          const result = await model.generateContentStream(fullPrompt)
+          
+          let fullHtml = ''
+          let slideCount = 0
 
-          // Clean markdown
+          for await (const chunk of result.stream) {
+            const chunkText = chunk.text()
+            fullHtml += chunkText
+            
+            // Simple heuristic to detect slide completion for progress updates
+            // We count closing </div> tags that might correspond to slides, 
+            // or just send the raw html chunk for the frontend to handle partial rendering.
+            // Sending partial HTML is better for "Realtime Preview".
+            
+            // Filter out markdown code blocks for the partial stream
+            const cleanChunk = chunkText.replace(/```html/g, '').replace(/```/g, '')
+            
+            controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify({ type: 'chunk', content: cleanChunk })}\n\n`)
+            )
+            
+            // Check for slide endings to update progress count
+            const matches = chunkText.match(/<\/div>/g)
+            if (matches) {
+               // This is a very loose approximation, but fine for visual progress
+               // A better way is to count <div class="slide"> in fullHtml
+               const slideMatches = fullHtml.match(/<div[^>]*class=["']slide["'][^>]*>/g)
+               if (slideMatches && slideMatches.length > slideCount) {
+                 slideCount = slideMatches.length
+                 controller.enqueue(
+                    encoder.encode(`data: ${JSON.stringify({ type: 'progress', current: slideCount, total: totalSlides, slideNumber: slideCount })}\n\n`)
+                 )
+               }
+            }
+          }
+
+          // Final cleanup of the full HTML
           fullHtml = fullHtml.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim()
 
-          // Send complete event
-          controller.enqueue(
-            encoder.encode(
-              `data: ${JSON.stringify({ type: 'progress', current: totalSlides, total: totalSlides, slideNumber: totalSlides })}\n\n`
-            )
-          )
-          
           controller.enqueue(
             encoder.encode(
               `data: ${JSON.stringify({ type: 'complete', html: fullHtml })}\n\n`

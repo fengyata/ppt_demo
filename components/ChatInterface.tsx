@@ -1,27 +1,30 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { Send, Bot, User, Sparkles, LayoutTemplate } from 'lucide-react'
+import { PPTPreview } from './PPTPreview'
 
 interface Message {
   id: string
   role: 'user' | 'assistant' | 'system'
   content: string
-  previewUrl?: string
 }
 
 export function ChatInterface() {
-  const router = useRouter()
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [isGeneratingPPT, setIsGeneratingPPT] = useState(false)
+  
+  // Streaming & Preview State
+  const [fullHtmlBuffer, setFullHtmlBuffer] = useState('') // Accumulates raw HTML
+  const [previewHtml, setPreviewHtml] = useState('') // Debounced/Snapshot for preview
   const [pptProgress, setPptProgress] = useState<{
     current: number
     total: number
     completed: boolean
-    previewUrl?: string
   } | null>(null)
+  
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = () => {
@@ -32,13 +35,13 @@ export function ChatInterface() {
     scrollToBottom()
   }, [messages])
 
-  // Initialize welcome message
+  // Initial Welcome
   useEffect(() => {
     setMessages([
       {
         id: '1',
         role: 'assistant',
-        content: 'Hello! I\'m your PPT generation assistant. Please tell me what topic you\'d like to create a presentation about. For example: "I want to create a presentation about artificial intelligence"',
+        content: 'Hi! I\'m your AI Presentation Designer. Tell me your topic, and I\'ll generate a modern, interactive slide deck for you. Try "Future of Renewable Energy" or "Q4 Marketing Strategy".',
       },
     ])
   }, [])
@@ -56,214 +59,116 @@ export function ChatInterface() {
     setMessages((prev) => [...prev, userMessage])
     setInput('')
     setIsGenerating(true)
+    // Reset Preview state for new generation
+    setPreviewHtml('') 
+    setFullHtmlBuffer('')
+    setPptProgress(null)
 
     try {
-      // Generate outline with streaming
+      // 1. Generate Outline (Streaming)
       const outlineResponse = await fetch('/api/generate-outline', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userPrompt: input,
-          conversationHistory: messages.map((m) => ({
-            role: m.role,
-            content: m.content,
-          })),
+          userPrompt: userMessage.content,
+          conversationHistory: messages.map((m) => ({ role: m.role, content: m.content })),
         }),
       })
 
-      if (!outlineResponse.ok) {
-        throw new Error('Failed to generate outline')
-      }
+      if (!outlineResponse.ok) throw new Error('Failed to generate outline')
 
-      // Create outline message for streaming
-      const outlineMessageId = (Date.now() + 2).toString()
-      const outlineMessage: Message = {
-        id: outlineMessageId,
-        role: 'assistant',
-        content: 'Generating outline...\n\n',
-      }
-      setMessages((prev) => [...prev, outlineMessage])
+      const outlineId = (Date.now() + 1).toString()
+      setMessages((prev) => [...prev, { id: outlineId, role: 'assistant', content: 'Thinking...' }])
 
-      // Stream outline content
       const outlineReader = outlineResponse.body?.getReader()
-      const outlineDecoder = new TextDecoder()
-
-      if (!outlineReader) {
-        throw new Error('Unable to read outline response stream')
-      }
-
-      let outlineBuffer = ''
+      const decoder = new TextDecoder()
       let fullOutline = ''
 
-      while (true) {
-        const { done, value } = await outlineReader.read()
-        if (done) break
-
-        outlineBuffer += outlineDecoder.decode(value, { stream: true })
-        const outlineLines = outlineBuffer.split('\n')
-        outlineBuffer = outlineLines.pop() || ''
-
-        for (const line of outlineLines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6))
-
-              if (data.type === 'chunk') {
-                // Append chunk to outline
-                fullOutline += data.content
-                setMessages((prev) =>
-                  prev.map((msg) =>
-                    msg.id === outlineMessageId
-                      ? {
-                          ...msg,
-                          content: `I've generated a PPT outline for you:\n\n${fullOutline}`,
-                        }
-                      : msg
-                  )
-                )
-              } else if (data.type === 'complete') {
-                // Final outline
-                fullOutline = data.outline
-                setMessages((prev) =>
-                  prev.map((msg) =>
-                    msg.id === outlineMessageId
-                      ? {
-                          ...msg,
-                          content: `I've generated a PPT outline for you:\n\n${fullOutline}\n\nGenerating PPT now...`,
-                        }
-                      : msg
-                  )
-                )
-              } else if (data.type === 'error') {
-                throw new Error(data.error || 'Error generating outline')
-              }
-            } catch (e) {
-              console.error('Error parsing outline stream data:', e)
+      if (outlineReader) {
+        while (true) {
+          const { done, value } = await outlineReader.read()
+          if (done) break
+          const chunk = decoder.decode(value, { stream: true })
+          const lines = chunk.split('\n')
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+                try {
+                    const data = JSON.parse(line.slice(6))
+                    if (data.type === 'chunk') {
+                        fullOutline += data.content
+                        setMessages((prev) => prev.map(m => m.id === outlineId ? { ...m, content: fullOutline } : m))
+                    } else if (data.type === 'complete') {
+                        fullOutline = data.outline // Ensure we have full
+                    }
+                } catch (e) {}
             }
           }
         }
       }
 
-      // Stream PPT generation
+      // 2. Generate PPT (Streaming HTML)
       setIsGeneratingPPT(true)
-      setPptProgress({ current: 0, total: 0, completed: false })
+      setMessages((prev) => [...prev, { id: 'ppt-status', role: 'assistant', content: 'Designing your presentation...' }])
 
       const pptResponse = await fetch('/api/generate-ppt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           outline: fullOutline,
-          userPrompt: input,
+          userPrompt: userMessage.content,
         }),
       })
 
-      if (!pptResponse.ok) {
-        throw new Error('Failed to generate PPT')
-      }
+      if (!pptResponse.ok) throw new Error('Failed to generate PPT')
 
-      const reader = pptResponse.body?.getReader()
-      const decoder = new TextDecoder()
+      const pptReader = pptResponse.body?.getReader()
+      let localHtmlBuffer = '' // Local var for speed
 
-      if (!reader) {
-        throw new Error('Unable to read response stream')
-      }
-
-      let buffer = ''
-      let fullHtml = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6))
-
-              if (data.type === 'start') {
-                setPptProgress({
-                  current: 0,
-                  total: data.total,
-                  completed: false,
-                })
-              } else if (data.type === 'progress') {
-                setPptProgress((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        current: data.current,
-                        total: data.total,
-                      }
-                    : null
-                )
-              } else if (data.type === 'complete') {
-                fullHtml = data.html
-                setPptProgress((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        completed: true,
-                      }
-                    : null
-                )
-              } else if (data.type === 'error') {
-                throw new Error(data.error || 'Error generating PPT')
-              }
-            } catch (e) {
-              console.error('Error parsing stream data:', e)
-            }
+      if (pptReader) {
+        while (true) {
+          const { done, value } = await pptReader.read()
+          if (done) break
+          
+          const chunk = decoder.decode(value, { stream: true })
+          const lines = chunk.split('\n')
+          
+          for (const line of lines) {
+             if (line.startsWith('data: ')) {
+                 try {
+                     const data = JSON.parse(line.slice(6))
+                     if (data.type === 'chunk') {
+                         localHtmlBuffer += data.content
+                         setFullHtmlBuffer(localHtmlBuffer)
+                     } else if (data.type === 'progress') {
+                         // Update Progress
+                         setPptProgress({ current: data.current, total: data.total, completed: false })
+                         // Update Preview! (Real-time Preview of Slide)
+                         setPreviewHtml(localHtmlBuffer)
+                     } else if (data.type === 'complete') {
+                         localHtmlBuffer = data.html
+                         setFullHtmlBuffer(localHtmlBuffer)
+                         setPreviewHtml(localHtmlBuffer)
+                         setPptProgress(prev => prev ? { ...prev, completed: true } : null)
+                     }
+                 } catch(e) {}
+             }
           }
         }
       }
 
-      // Save PPT and get preview URL
-      if (fullHtml) {
-        const saveResponse = await fetch('/api/save-ppt', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ html: fullHtml }),
-        })
+      // 3. Finalize
+      setMessages((prev) => prev.filter(m => m.id !== 'ppt-status').concat({
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: '✨ Presentation ready! You can preview it on the right.'
+      }))
 
-        if (saveResponse.ok) {
-          const saveData = await saveResponse.json()
-          const previewUrl = saveData.previewUrl
-
-          setPptProgress((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  previewUrl,
-                }
-              : null
-          )
-
-          // Use blob URL directly if available, otherwise use preview URL
-          const finalPreviewUrl = saveData.blobUrl 
-            ? `/preview/${saveData.presentationId}?url=${encodeURIComponent(saveData.blobUrl)}`
-            : previewUrl
-
-          const pptMessage: Message = {
-            id: (Date.now() + 3).toString(),
-            role: 'assistant',
-            content: 'PPT generation completed! Click the button below to preview your presentation in fullscreen.',
-            previewUrl: finalPreviewUrl,
-          }
-          setMessages((prev) => [...prev, pptMessage])
-        } else {
-          throw new Error('Failed to save presentation')
-        }
-      }
     } catch (error) {
-      const errorMessage: Message = {
-        id: (Date.now() + 4).toString(),
-        role: 'assistant',
-        content: `Sorry, an error occurred during generation: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      }
-      setMessages((prev) => [...prev, errorMessage])
+      setMessages((prev) => [...prev, { 
+          id: Date.now().toString(), 
+          role: 'assistant', 
+          content: `Error: ${error instanceof Error ? error.message : 'Unknown error'}` 
+      }])
     } finally {
       setIsGenerating(false)
       setIsGeneratingPPT(false)
@@ -271,142 +176,76 @@ export function ChatInterface() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-background">
-      {/* Header */}
-      <div className="border-b bg-card">
-        <div className="container mx-auto px-4 sm:px-6 py-3 sm:py-4">
-          <h1 className="text-xl sm:text-2xl font-bold text-foreground">AI PPT Generator</h1>
-          <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-            Generate beautiful presentations using AI SDK 5.x and Gemini 3 Pro
-          </p>
+    <div className="flex h-screen bg-background overflow-hidden">
+      {/* LEFT SIDEBAR - CHAT */}
+      <div className="w-[400px] flex flex-col border-r bg-muted/10 flex-shrink-0">
+        {/* Header */}
+        <div className="h-14 border-b flex items-center px-4 bg-background/50 backdrop-blur">
+            <Sparkles className="w-5 h-5 text-primary mr-2" />
+            <span className="font-semibold">AI Slides</span>
+        </div>
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+            {messages.map((m) => (
+                <div key={m.id} className={`flex gap-3 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${m.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
+                        {m.role === 'user' ? <User size={14} /> : <Bot size={14} />}
+                    </div>
+                    <div className={`rounded-lg p-3 text-sm max-w-[85%] ${m.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-card border shadow-sm'}`}>
+                        <div className="whitespace-pre-wrap leading-relaxed">{m.content}</div>
+                    </div>
+                </div>
+            ))}
+            <div ref={messagesEndRef} />
+        </div>
+
+        {/* Input */}
+        <div className="p-4 border-t bg-background">
+            <form onSubmit={handleSubmit} className="relative">
+                <input 
+                    className="w-full bg-muted/50 border rounded-lg pl-4 pr-12 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                    placeholder="Describe your presentation..."
+                    value={input}
+                    onChange={e => setInput(e.target.value)}
+                    disabled={isGenerating}
+                />
+                <button 
+                    type="submit" 
+                    disabled={isGenerating || !input.trim()}
+                    className="absolute right-2 top-2 p-1.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                >
+                    <Send size={16} />
+                </button>
+            </form>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
-        {/* Left: Chat Messages */}
-        <div className="w-full md:w-[500px] lg:w-[600px] flex flex-col border-r border-b md:border-b-0 bg-muted/30">
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4">
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`max-w-[85%] rounded-lg px-3 sm:px-4 py-2 text-xs sm:text-sm ${
-                    message.role === 'user'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-card text-foreground border'
-                  }`}
-                >
-                  <div className="whitespace-pre-wrap break-words">{message.content}</div>
-                  {message.previewUrl && (
-                    <a
-                      href={message.previewUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center justify-center w-full mt-3 px-3 sm:px-4 py-2 text-xs font-medium text-primary-foreground bg-primary rounded-md hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors"
-                    >
-                      🎯 Open Fullscreen Preview
-                    </a>
-                  )}
-                </div>
-              </div>
-            ))}
-            {isGenerating && !isGeneratingPPT && (
-              <div className="flex justify-start">
-                <div className="bg-card border rounded-lg px-3 sm:px-4 py-2">
-                  <div className="flex gap-1.5">
-                    <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                  </div>
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
+      {/* RIGHT PANEL - PREVIEW */}
+      <div className="flex-1 flex flex-col bg-muted/30 relative">
+         {previewHtml ? (
+             <div className="absolute inset-0 p-4 sm:p-6">
+                 <PPTPreview html={previewHtml} className="h-full shadow-lg" title="Generated Presentation" />
+             </div>
+         ) : (
+             <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
+                 <div className="w-16 h-16 bg-muted rounded-2xl flex items-center justify-center mb-4">
+                    <LayoutTemplate size={32} />
+                 </div>
+                 <h3 className="font-medium text-lg text-foreground">Ready to Design</h3>
+                 <p className="text-sm mt-2 max-w-xs text-center">Enter a topic in the chat to generate a presentation structure and slides.</p>
+             </div>
+         )}
 
-          {/* Input */}
-          <form onSubmit={handleSubmit} className="p-3 sm:p-4 border-t bg-card">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Enter your PPT topic..."
-                disabled={isGenerating}
-                className="flex-1 px-3 py-2 text-sm border rounded-md bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent disabled:opacity-50"
-              />
-              <button
-                type="submit"
-                disabled={isGenerating || !input.trim()}
-                className="px-3 sm:px-4 py-2 text-sm font-medium text-primary-foreground bg-primary rounded-md hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {isGenerating ? '...' : 'Send'}
-              </button>
-            </div>
-          </form>
-        </div>
-
-        {/* Right: Info Panel with Progress */}
-        <div className="flex-1 flex flex-col bg-background">
-          {/* Progress Section - Now on Right */}
-          {isGeneratingPPT && pptProgress && (
-            <div className="p-4 sm:p-6 bg-card border-b">
-              <h3 className="text-base sm:text-lg font-semibold mb-4 text-foreground">Generation Progress</h3>
-              <div className="space-y-3">
-                <div className="text-sm sm:text-base text-muted-foreground">
-                  {pptProgress.completed
-                    ? `✅ Generation Complete (${pptProgress.total}/${pptProgress.total})`
-                    : `Generating Slide ${pptProgress.current} / ${pptProgress.total}`}
-                </div>
-                <div className="w-full h-3 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-primary transition-all duration-300 ease-out"
-                    style={{
-                      width: `${pptProgress.total > 0 ? (pptProgress.current / pptProgress.total) * 100 : 0}%`,
-                    }}
-                  />
-                </div>
-                {pptProgress.completed && pptProgress.previewUrl && (
-                  <a
-                    href={pptProgress.previewUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center w-full mt-4 px-4 sm:px-6 py-3 text-sm sm:text-base font-medium text-primary-foreground bg-primary rounded-md hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors"
-                  >
-                    🎯 Open Fullscreen Preview
-                  </a>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Info Panel */}
-          <div className="flex-1 flex items-center justify-center p-4 sm:p-8">
-            <div className="text-center max-w-md space-y-4">
-              <div className="text-4xl sm:text-5xl mb-4">📊</div>
-              <h2 className="text-xl sm:text-2xl font-semibold text-foreground">AI PPT Generator</h2>
-              <p className="text-sm sm:text-base text-muted-foreground">
-                Generate professional presentations with AI. Simply describe your topic and we'll create a beautiful presentation for you.
-              </p>
-              {pptProgress && pptProgress.completed && pptProgress.previewUrl && !isGeneratingPPT && (
-                <div className="mt-6">
-                  <a
-                    href={pptProgress.previewUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center px-6 py-3 text-base font-medium text-primary-foreground bg-primary rounded-md hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors"
-                  >
-                    🎯 Open Fullscreen Preview
-                  </a>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+         {/* Progress Overlay */}
+         {isGeneratingPPT && pptProgress && !pptProgress.completed && (
+             <div className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-foreground/80 backdrop-blur text-background px-6 py-3 rounded-full shadow-xl flex items-center gap-3 z-50">
+                 <div className="w-4 h-4 border-2 border-background/30 border-t-background rounded-full animate-spin" />
+                 <span className="text-sm font-medium">
+                    Generating Slide {pptProgress.current} of {pptProgress.total}...
+                 </span>
+             </div>
+         )}
       </div>
     </div>
   )
