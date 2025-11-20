@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { ChevronLeft, ChevronRight, Maximize, Download, X, Presentation, FileJson } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Maximize, Download, X, Presentation, FileJson, Share2, PanelLeft, PanelLeftClose } from 'lucide-react'
 
 interface PPTPreviewProps {
   html: string
@@ -9,23 +9,72 @@ interface PPTPreviewProps {
   autoShow?: boolean
   onClose?: () => void
   className?: string
+  showThumbnails?: boolean
 }
 
-export function PPTPreview({ html, title = 'Presentation', autoShow = false, onClose, className = '' }: PPTPreviewProps) {
+export function PPTPreview({ html, title = 'Presentation', autoShow = false, onClose, className = '', showThumbnails = false }: PPTPreviewProps) {
   const [currentSlide, setCurrentSlide] = useState(1)
   const [totalSlides, setTotalSlides] = useState(0)
   const [iframeRef, setIframeRef] = useState<HTMLIFrameElement | null>(null)
   const [isExporting, setIsExporting] = useState(false)
+  const [isSharing, setIsSharing] = useState(false)
+  
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [slidesData, setSlidesData] = useState<string[]>([])
 
-  // Inject script to handle slide navigation and count slides
+  // Load pptxgenjs via CDN
+  useEffect(() => {
+      if (!document.getElementById('pptxgen-script')) {
+          const script = document.createElement('script')
+          script.id = 'pptxgen-script'
+          script.src = 'https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js'
+          script.async = true
+          document.body.appendChild(script)
+      }
+  }, [])
+
+  // Thumbnail Generation
+  useEffect(() => {
+      if (showThumbnails && html) {
+          try {
+              const parser = new DOMParser()
+              const doc = parser.parseFromString(html, 'text/html')
+              const styles = Array.from(doc.querySelectorAll('style, link[rel="stylesheet"]')).map(el => el.outerHTML).join('')
+              const slideEls = doc.querySelectorAll('.slide')
+              
+              const slides = Array.from(slideEls).map(el => {
+                  // Standard 16:9 content without scaling inside
+                  return `
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        ${styles}
+                        <style>
+                            body { margin: 0; overflow: hidden; background: white; width: 100vw; height: 100vh; }
+                            .slide-container { width: 100%; height: 100%; overflow: hidden; }
+                            .slide { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; }
+                            ::-webkit-scrollbar { display: none; }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="slide-container">${el.outerHTML}</div>
+                    </body>
+                    </html>
+                  `
+              })
+              setSlidesData(slides)
+          } catch (e) {
+              console.error("Error generating thumbnails", e)
+          }
+      }
+  }, [html, showThumbnails])
+
+  // Inject script to handle slide navigation
   const scriptContent = `
     <script>
-      // Initialize slide navigation
       const slides = document.querySelectorAll('.slide');
       const totalSlides = slides.length;
       let currentSlide = 1;
-
-      // Report total slides to parent
       window.parent.postMessage({ type: 'INIT_SLIDES', total: totalSlides }, '*');
 
       function showSlide(n) {
@@ -40,12 +89,8 @@ export function PPTPreview({ html, title = 'Presentation', autoShow = false, onC
         if (event.data.type === 'NAVIGATE') {
           const direction = event.data.direction;
           let nextSlide = currentSlide;
-          
-          if (direction === 'next' && currentSlide < totalSlides) {
-            nextSlide++;
-          } else if (direction === 'prev' && currentSlide > 1) {
-            nextSlide--;
-          }
+          if (direction === 'next' && currentSlide < totalSlides) nextSlide++;
+          else if (direction === 'prev' && currentSlide > 1) nextSlide--;
           showSlide(nextSlide);
         } else if (event.data.type === 'GOTO') {
             showSlide(event.data.slide);
@@ -54,9 +99,7 @@ export function PPTPreview({ html, title = 'Presentation', autoShow = false, onC
       
       document.body.style.overflow = 'hidden';
       const container = document.querySelector('.slide-container');
-      if(container) {
-          container.style.overflow = 'hidden';
-      }
+      if(container) container.style.overflow = 'hidden';
     </script>
     </body>
   `
@@ -73,17 +116,38 @@ export function PPTPreview({ html, title = 'Presentation', autoShow = false, onC
         setCurrentSlide(event.data.current)
       }
     }
-
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
   }, [])
 
-  const handlePrev = () => {
-    iframeRef?.contentWindow?.postMessage({ type: 'NAVIGATE', direction: 'prev' }, '*')
+  const navigateTo = (index: number) => {
+      iframeRef?.contentWindow?.postMessage({ type: 'GOTO', slide: index }, '*')
   }
 
-  const handleNext = () => {
-    iframeRef?.contentWindow?.postMessage({ type: 'NAVIGATE', direction: 'next' }, '*')
+  const handlePrev = () => iframeRef?.contentWindow?.postMessage({ type: 'NAVIGATE', direction: 'prev' }, '*')
+  const handleNext = () => iframeRef?.contentWindow?.postMessage({ type: 'NAVIGATE', direction: 'next' }, '*')
+
+  const handleShare = async () => {
+      setIsSharing(true)
+      try {
+          const res = await fetch('/api/save-ppt', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ html })
+          })
+          const data = await res.json()
+          if (data.previewUrl) {
+              const fullUrl = window.location.origin + data.previewUrl
+              await navigator.clipboard.writeText(fullUrl)
+              alert('Link copied! You can share this URL.')
+          } else {
+              throw new Error('No url returned')
+          }
+      } catch(e) {
+          alert('Share failed')
+      } finally {
+          setIsSharing(false)
+      }
   }
 
   const handleDownloadHTML = () => {
@@ -101,32 +165,46 @@ export function PPTPreview({ html, title = 'Presentation', autoShow = false, onC
   const handleDownloadPPTX = async () => {
     try {
       setIsExporting(true)
-      // Dynamically import pptxgenjs to avoid SSR/build issues
-      const pptxgenModule = await import('pptxgenjs')
-      const PptxGenJS = pptxgenModule.default
-      const pres = new PptxGenJS()
+      
+      // @ts-ignore
+      if (typeof window.PptxGenJS === 'undefined') {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+           // @ts-ignore
+          if (typeof window.PptxGenJS === 'undefined') {
+            alert('PPTX generator is still loading. Please try again in a moment.')
+            return
+          }
+      }
 
-      // Setup Metadata
+      // @ts-ignore
+      const pres = new window.PptxGenJS()
+
       pres.title = title
       pres.layout = 'LAYOUT_16x9'
 
-      // Parse HTML Content
       const parser = new DOMParser()
       const doc = parser.parseFromString(html, 'text/html')
       const slides = doc.querySelectorAll('.slide')
 
-      // Helper to clean text
       const cleanText = (text: string | null) => text ? text.replace(/\s+/g, ' ').trim() : ''
 
       slides.forEach((slideElem, index) => {
         const slide = pres.addSlide()
         
-        // Attempt to find background
-        // Since we can't compute style easily, we assume standard white/light theme
-        // or check for inline style if AI generated it
-        slide.background = { color: "FFFFFF" }
+        let bgImage = null
+        if (slideElem instanceof HTMLElement && slideElem.style.backgroundImage) {
+             const match = slideElem.style.backgroundImage.match(/url\(['"]?(.*?)['"]?\)/)
+             if (match && match[1]) {
+                 bgImage = match[1]
+             }
+        }
+        
+        if (bgImage) {
+            slide.background = { path: bgImage }
+        } else {
+            slide.background = { color: "FFFFFF" }
+        }
 
-        // 1. Title Extraction (h1, h2, .title)
         const titleElem = slideElem.querySelector('h1, h2, .title')
         if (titleElem) {
             slide.addText(cleanText(titleElem.textContent), { 
@@ -136,16 +214,11 @@ export function PPTPreview({ html, title = 'Presentation', autoShow = false, onC
             })
         }
 
-        // 2. Content Extraction (p, ul, li, .content)
         const contentLines: string[] = []
-        
-        // Lists
         slideElem.querySelectorAll('li').forEach(li => {
             contentLines.push(`• ${cleanText(li.textContent)}`)
         })
         
-        // Paragraphs (only if not inside list to avoid duplication if structure is nested)
-        // This is heuristic
         if (contentLines.length === 0) {
             slideElem.querySelectorAll('p').forEach(p => {
                 const text = cleanText(p.textContent)
@@ -157,18 +230,13 @@ export function PPTPreview({ html, title = 'Presentation', autoShow = false, onC
             slide.addText(contentLines.join('\n'), {
                 x: 1, y: 2, w: '80%', h: 4,
                 fontSize: 18, color: '333333', align: 'left',
-                lineSpacing: 30, // 1.5ish linespacing
+                lineSpacing: 30,
                 fontFace: 'Arial'
             })
         }
 
-        // 3. Image Extraction
         const imgElem = slideElem.querySelector('img')
         if (imgElem && imgElem.src) {
-            // Basic positioning: right side or bottom
-            // If content is short, put image on right
-            // We'll just put it in a standard "Content + Image" layout position
-            // x: 6.5 inches, y: 2 inches
             slide.addImage({ 
                 path: imgElem.src, 
                 x: 6.5, y: 2, w: 3, h: 3 
@@ -179,7 +247,7 @@ export function PPTPreview({ html, title = 'Presentation', autoShow = false, onC
       await pres.writeFile({ fileName: `${title.replace(/\s+/g, '_')}.pptx` })
     } catch (error) {
       console.error('PPTX generation failed:', error)
-      alert('Failed to generate PPTX. Please try downloading as HTML.')
+      alert('Failed to generate PPTX.')
     } finally {
       setIsExporting(false)
     }
@@ -194,97 +262,127 @@ export function PPTPreview({ html, title = 'Presentation', autoShow = false, onC
   }
 
   return (
-    <div className={`flex flex-col h-full bg-background border rounded-xl shadow-sm overflow-hidden ${className}`}>
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-card border-b">
-        <div className="flex items-center gap-2">
-          <div className="p-1.5 bg-primary/10 rounded-md">
-            <Presentation size={18} className="text-primary" />
+    <div className={`flex h-full bg-background border rounded-xl shadow-sm overflow-hidden ${className}`}>
+      
+      {/* Sidebar (Thumbnails) */}
+      {showThumbnails && (
+          <div className={`border-r bg-muted/30 flex flex-col transition-all duration-300 ease-in-out ${isSidebarOpen ? 'w-48' : 'w-0'} overflow-hidden relative`}>
+              <div className="p-3 border-b flex items-center justify-between bg-card sticky top-0 z-10">
+                  <span className="text-xs font-semibold text-muted-foreground">Slides</span>
+                  <button onClick={() => setIsSidebarOpen(false)} className="p-1 hover:bg-muted rounded" title="Close Sidebar">
+                      <PanelLeftClose size={14} />
+                  </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                  {slidesData.map((slideHtml, idx) => (
+                      <div 
+                        key={idx} 
+                        onClick={() => navigateTo(idx + 1)}
+                        className={`relative w-full h-[108px] bg-white rounded border cursor-pointer hover:ring-2 ring-primary/50 transition-all overflow-hidden ${currentSlide === idx + 1 ? 'ring-2 ring-primary' : ''}`}
+                      >
+                          <div className="absolute top-1 left-1 z-10 bg-black/50 text-white text-[10px] px-1.5 rounded-full backdrop-blur-sm">
+                              {idx + 1}
+                          </div>
+                          <iframe 
+                            srcDoc={slideHtml} 
+                            className="absolute top-0 left-0 border-0 pointer-events-none origin-top-left bg-white" 
+                            style={{ width: '1280px', height: '720px', transform: 'scale(0.135)' }} // 1280*0.135 = 172.8 (fits in w-48 with padding)
+                            tabIndex={-1}
+                          />
+                          <div className="absolute inset-0 z-20" />
+                      </div>
+                  ))}
+              </div>
           </div>
-          <h3 className="font-medium text-sm text-foreground truncate max-w-[200px]">{title}</h3>
-        </div>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={handleFullscreen}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
-            title="Full Screen Preview"
-          >
-             <Maximize size={14} />
-             <span className="hidden sm:inline">Fullscreen</span>
-          </button>
-          
-          <div className="h-4 w-[1px] bg-border mx-1" />
-          
-          <button
-            onClick={handleDownloadHTML}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
-            title="Download HTML Source"
-          >
-            <FileJson size={14} />
-            <span className="hidden sm:inline">HTML</span>
-          </button>
+      )}
 
-          <button
-            onClick={handleDownloadPPTX}
-            disabled={isExporting}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary-foreground bg-primary hover:bg-primary/90 rounded-md transition-colors shadow-sm ml-2"
-            title="Download PowerPoint File"
-          >
-            <Download size={14} />
-            <span className="hidden sm:inline">{isExporting ? 'Exporting...' : 'Download PPTX'}</span>
-          </button>
-          
-          {onClose && (
-            <>
-              <div className="h-4 w-[1px] bg-border mx-1" />
+      {/* Main Area */}
+      <div className="flex-1 flex flex-col min-w-0">
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 bg-card border-b">
+            <div className="flex items-center gap-2">
+              {showThumbnails && !isSidebarOpen && (
+                  <button onClick={() => setIsSidebarOpen(true)} className="p-1.5 mr-1 hover:bg-muted rounded-md" title="Show Slides">
+                      <PanelLeft size={18} />
+                  </button>
+              )}
+              <div className="p-1.5 bg-primary/10 rounded-md">
+                <Presentation size={18} className="text-primary" />
+              </div>
+              <h3 className="font-medium text-sm text-foreground truncate max-w-[200px]">{title}</h3>
+            </div>
+            <div className="flex items-center gap-1">
+              {/* Share Button (Primary) */}
               <button
-                onClick={onClose}
-                className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors"
+                onClick={handleShare}
+                disabled={isSharing}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary-foreground bg-primary hover:bg-primary/90 rounded-md transition-colors shadow-sm"
+                title="Share Presentation Link"
               >
-                <X size={18} />
+                <Share2 size={14} />
+                <span className="hidden sm:inline">{isSharing ? 'Sharing...' : 'Share'}</span>
               </button>
-            </>
-          )}
-        </div>
-      </div>
 
-      {/* Preview Area */}
-      <div className="flex-1 relative bg-muted/50 flex items-center justify-center p-4 overflow-hidden">
-        <div className="relative w-full aspect-[16/9] max-h-full bg-white shadow-2xl rounded-lg overflow-hidden ring-1 ring-border/50">
-            <iframe
-            ref={setIframeRef}
-            srcDoc={enhancedHtml}
-            className="w-full h-full border-0 block"
-            title="PPT Preview"
-            sandbox="allow-scripts allow-same-origin"
-            />
-        </div>
-      </div>
+              <div className="h-4 w-[1px] bg-border mx-1" />
 
-      {/* Navigation Footer */}
-      <div className="bg-card border-t px-4 py-3 flex items-center justify-between">
-        <div className="text-xs font-medium text-muted-foreground">
-          Slide {currentSlide} <span className="text-border mx-1">/</span> {totalSlides || '-'}
-        </div>
-        
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handlePrev}
-            disabled={currentSlide <= 1}
-            className="p-1.5 rounded-md hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-foreground"
-          >
-            <ChevronLeft size={18} />
-          </button>
-          <button
-            onClick={handleNext}
-            disabled={currentSlide >= totalSlides}
-            className="p-1.5 rounded-md hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-foreground"
-          >
-            <ChevronRight size={18} />
-          </button>
-        </div>
+              <button
+                onClick={handleDownloadPPTX}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
+                title="Download PPTX (Google Slides Compatible)"
+              >
+                <Download size={14} />
+                <span className="hidden lg:inline">PPTX</span>
+              </button>
+              
+              <button
+                onClick={handleDownloadHTML}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
+                title="Download HTML Source"
+              >
+                <FileJson size={14} />
+                <span className="hidden lg:inline">HTML</span>
+              </button>
 
-        <div className="w-[80px]"></div>
+              <button
+                onClick={handleFullscreen}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
+                title="Full Screen"
+              >
+                 <Maximize size={14} />
+              </button>
+
+              {onClose && (
+                <button onClick={onClose} className="p-1.5 text-muted-foreground hover:text-destructive rounded-md ml-1">
+                  <X size={18} />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Preview Iframe */}
+          <div className="flex-1 relative bg-muted/50 flex items-center justify-center p-4 overflow-hidden">
+            <div className="relative w-full aspect-[16/9] max-h-full bg-white shadow-2xl rounded-lg overflow-hidden ring-1 ring-border/50">
+                <iframe
+                ref={setIframeRef}
+                srcDoc={enhancedHtml}
+                className="w-full h-full border-0 block"
+                title="PPT Preview"
+                sandbox="allow-scripts allow-same-origin"
+                />
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="bg-card border-t px-4 py-3 flex items-center justify-between">
+            <div className="text-xs font-medium text-muted-foreground">
+              Slide {currentSlide} <span className="text-border mx-1">/</span> {totalSlides || '-'}
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={handlePrev} className="p-1.5 rounded-md hover:bg-muted"><ChevronLeft size={18} /></button>
+              <button onClick={handleNext} className="p-1.5 rounded-md hover:bg-muted"><ChevronRight size={18} /></button>
+            </div>
+            <div className="w-[80px]"></div>
+          </div>
       </div>
     </div>
   )

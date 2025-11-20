@@ -17,21 +17,19 @@ export async function POST(request: NextRequest) {
     const presentationId = randomUUID()
     
     // Upload HTML to Vercel Blob Storage
-    // According to Vercel Blob docs: https://vercel.com/docs/vercel-blob
-    // - Use put() for server-side uploads
-    // - Set access: 'public' for public URLs
-    // - Set contentType for proper MIME type
+    // We set addRandomSuffix: false to ensure the filename matches exactly what we expect
+    // so we can retrieve it by ID later in the preview route.
     const blob = await put(`presentations/${presentationId}.html`, html, {
       access: 'public',
       contentType: 'text/html',
+      addRandomSuffix: false, 
     })
     
     // Return preview URL with blob URL
-    // The blob.url is a public URL that can be accessed directly
     return NextResponse.json({
       success: true,
       previewUrl: `/preview/${presentationId}`,
-      blobUrl: blob.url, // Public blob URL from Vercel Blob
+      blobUrl: blob.url, 
       presentationId,
     })
   } catch (error) {

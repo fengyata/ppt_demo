@@ -50,27 +50,28 @@ export default function PreviewPage() {
 
   if (loading) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center bg-black">
-        <div className="text-white text-lg animate-pulse">Loading presentation...</div>
+      <div className="fixed inset-0 flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4">
+            <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            <div className="text-muted-foreground text-sm">Loading presentation...</div>
+        </div>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="fixed inset-0 flex flex-col items-center justify-center bg-gray-900 text-white p-4">
-        <div className="text-xl font-semibold mb-2 text-red-400">Error Loading Presentation</div>
-        <div className="text-gray-400 text-center max-w-md">{error}</div>
-        <div className="mt-4 text-xs text-gray-600">ID: {id}</div>
+      <div className="fixed inset-0 flex flex-col items-center justify-center bg-background text-foreground p-4">
+        <div className="text-xl font-semibold mb-2 text-destructive">Error Loading Presentation</div>
+        <div className="text-muted-foreground text-center max-w-md">{error}</div>
+        <div className="mt-4 text-xs text-muted-foreground/50">ID: {id}</div>
       </div>
     )
   }
 
   return (
-    <div className="fixed inset-0 w-full h-full bg-gray-100 p-4 md:p-8">
-        <div className="w-full h-full max-w-7xl mx-auto">
-            <PPTPreview html={html} autoShow={true} />
-        </div>
+    <div className="fixed inset-0 w-full h-full bg-background">
+        <PPTPreview html={html} autoShow={true} showThumbnails={true} className="border-none rounded-none" />
     </div>
   )
 }
